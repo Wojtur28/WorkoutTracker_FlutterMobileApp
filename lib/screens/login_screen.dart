@@ -1,8 +1,8 @@
-
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:workout_tracker/screens/register_screen.dart';
+import 'package:workout_tracker/screens/training_screen.dart';
+import 'package:workout_tracker/services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,11 +12,15 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+
+  final AuthService apiService =
+  AuthService(baseUrl: 'http://10.0.2.2:8080');
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -25,11 +29,46 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      if (kDebugMode) {
-        print('Email: ${_emailController.text}');
-        print('Password: ${_passwordController.text}');
+      setState(() {
+        _isLoading = true;
+      });
+
+      try {
+        final response = await apiService.login(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+
+        if (response['success']) {
+          final token = response['data']['token'];
+          await apiService.saveToken(token);
+
+          if (kDebugMode) {
+            print('Login successful. Token: $token');
+          }
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const TrainingScreen()),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response['message'])),
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('Login error: $e');
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An error occurred. Please try again.')),
+        );
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }

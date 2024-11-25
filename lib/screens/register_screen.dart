@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:workout_tracker/services/auth_service.dart';
 import '../models/gender.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -10,7 +11,6 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-
   final _formKey = GlobalKey<FormState>();
 
   final TextEditingController _firstNameController = TextEditingController();
@@ -19,11 +19,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final TextEditingController _passwordController  = TextEditingController();
   final TextEditingController _repasswordController= TextEditingController();
 
+  final AuthService apiService =
+  AuthService(baseUrl: 'http://10.0.2.2:8080');
+
   Gender? _selectedGender;
-  bool _agreedToTerms = false;
+  bool _isTermsAndConditionsAccepted = false;
 
   bool _obscurePassword = true;
   bool _obscureRepassword = true;
+
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -35,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
+  Future<void> _handleRegister() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedGender == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -44,7 +49,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return;
       }
 
-      if (!_agreedToTerms) {
+      if (!_isTermsAndConditionsAccepted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('You must agree to the terms')),
         );
@@ -60,22 +65,56 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       String genderValue = _selectedGender.toString().split('.').last.toUpperCase();
 
-      if (kDebugMode) {
-        print('First Name: ${_firstNameController.text}');
-        print('Last Name: ${_lastNameController.text}');
-        print('Email: ${_emailController.text}');
-        print('Password: ${_passwordController.text}');
-        print('Gender: $genderValue');
-        print('Agreed to Terms: $_agreedToTerms');
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Registration Successful!')),
-      );
-
-      Future.delayed(const Duration(seconds: 2), () {
-        Navigator.pop(context);
+      setState(() {
+        _isLoading = true;
       });
+
+      try {
+        final response = await apiService.register(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+          gender: genderValue,
+          isTermsAndConditionsAccepted: _isTermsAndConditionsAccepted,
+        );
+
+        if (response['success']) {
+          if (kDebugMode) {
+            print('Registration successful.');
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Registration Successful!')),
+          );
+
+          Future.delayed(const Duration(seconds: 2), () {
+            Navigator.pop(context);
+          });
+        } else {
+          if (kDebugMode) {
+            print('Registration failed: ${response['message']}');
+            print('Status Code: ${response['statusCode']}');
+            print('Response Body: ${response['body']}');
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(response['message'])),
+          );
+        }
+      } catch (e, stacktrace) {
+        if (kDebugMode) {
+          print('Registration error: $e');
+          print('Stacktrace: $stacktrace');
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -209,7 +248,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
               const SizedBox(height: 16.0),
 
-              // Gender Selection with Radio Buttons
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -242,10 +280,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Row(
                 children: [
                   Checkbox(
-                    value: _agreedToTerms,
+                    value: _isTermsAndConditionsAccepted,
                     onChanged: (bool? newValue) {
                       setState(() {
-                        _agreedToTerms = newValue ?? false;
+                        _isTermsAndConditionsAccepted = newValue ?? false;
                       });
                     },
                   ),
@@ -258,12 +296,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ],
               ),
               const SizedBox(height: 16.0),
-
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _handleRegister,
-                  child: const Text('Register'),
+                  onPressed: _isLoading ? null : _handleRegister,
+                  child: _isLoading
+                      ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.0,
+                    ),
+                  )
+                      : const Text('Register'),
                 ),
               ),
 
@@ -274,7 +320,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 children: [
                   const Text("Already have an account?"),
                   TextButton(
-                    onPressed: () {
+                    onPressed: _isLoading
+                        ? null
+                        : () {
                       Navigator.pop(context);
                     },
                     child: const Text('Login'),
